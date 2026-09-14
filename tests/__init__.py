@@ -1,0 +1,1 @@
+"""Unit tests for Smart Grid simulation physics and telemetry."""

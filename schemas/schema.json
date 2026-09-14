@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SubstationTelemetryTick",
+  "description": "Standardized payload emitted by Member 1 to Member 2 on every simulation tick.",
+  "type": "object",
+  "required": ["timestamp", "substations"],
+  "properties": {
+    "timestamp": {
+      "type": "number",
+      "description": "UNIX timestamp of the simulation step."
+    },
+    "substations": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "required": [
+          "node_id",
+          "voltage",
+          "frequency",
+          "load_mw",
+          "capacity_mw",
+          "breaker_status",
+          "is_overloaded",
+          "operator_note"
+        ],
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "enum": [
+              "Substation_A",
+              "Substation_B",
+              "Substation_C",
+              "Substation_D"
+            ],
+            "description": "Identifier of the power substation."
+          },
+          "voltage": {
+            "type": "number",
+            "description": "Phase voltage in Volts (nominal: 230.0V, 0.0V if breaker is OPEN)."
+          },
+          "frequency": {
+            "type": "number",
+            "description": "System frequency in Hertz (nominal: 50.0Hz, 0.0Hz if breaker is OPEN)."
+          },
+          "load_mw": {
+            "type": "number",
+            "minimum": 0.0,
+            "description": "Current active power drawn in Megawatts (0.0 if breaker is OPEN)."
+          },
+          "capacity_mw": {
+            "type": "number",
+            "description": "Rated maximum load capacity before triggering an overload condition."
+          },
+          "breaker_status": {
+            "type": "string",
+            "enum": ["CLOSED", "OPEN"],
+            "description": "Physical switch state ('CLOSED' for power delivery, 'OPEN' for tripped/isolated)."
+          },
+          "is_overloaded": {
+            "type": "boolean",
+            "description": "True if load_mw exceeds capacity_mw due to load redistribution."
+          },
+          "operator_note": {
+            "type": "string",
+            "description": "Operational log or field note for this substation."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

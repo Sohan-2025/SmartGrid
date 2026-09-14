@@ -1,0 +1,45 @@
+{
+  "timestamp": 1789370400.0,
+  "substations": [
+    {
+      "node_id": "Substation_A",
+      "voltage": 230.42,
+      "frequency": 49.98,
+      "load_mw": 45.0,
+      "capacity_mw": 100.0,
+      "breaker_status": "CLOSED",
+      "is_overloaded": false,
+      "operator_note": "Routine telemetry check normal."
+    },
+    {
+      "node_id": "Substation_B",
+      "voltage": 229.85,
+      "frequency": 50.01,
+      "load_mw": 50.0,
+      "capacity_mw": 100.0,
+      "breaker_status": "CLOSED",
+      "is_overloaded": false,
+      "operator_note": "Routine telemetry check normal."
+    },
+    {
+      "node_id": "Substation_C",
+      "voltage": 231.10,
+      "frequency": 49.95,
+      "load_mw": 40.0,
+      "capacity_mw": 100.0,
+      "breaker_status": "CLOSED",
+      "is_overloaded": false,
+      "operator_note": "Routine telemetry check normal."
+    },
+    {
+      "node_id": "Substation_D",
+      "voltage": 228.90,
+      "frequency": 50.04,
+      "load_mw": 55.0,
+      "capacity_mw": 100.0,
+      "breaker_status": "CLOSED",
+      "is_overloaded": false,
+      "operator_note": "Routine telemetry check normal."
+    }
+  ]
+}
