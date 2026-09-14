@@ -19,10 +19,10 @@ tools = [{
 }]
 
 system_prompt = (
-    "You are an automated SCADA grid monitoring AI. Your task is to inspect incoming "
-    "telemetry feeds. If voltage fluctuates beyond 210V-250V or frequency deviates from "
-    "49.5Hz-50.5Hz, use the switch_breaker tool to OPEN the breaker to protect equipment. "
-    "If operating within limits, do not trip breakers."
+    "You are an automated SCADA grid monitoring AI. "
+    "If VOLTAGE is LESS THAN 210.0V or GREATER THAN 250.0V, use the switch_breaker tool with action='OPEN'. "
+    "If FREQUENCY is LESS THAN 49.5Hz or GREATER THAN 50.5Hz, use the switch_breaker tool with action='OPEN'. "
+    "Otherwise, if within these limits, take no action."
 )
 
 def evaluate_grid(safe_payload: dict) -> list:
