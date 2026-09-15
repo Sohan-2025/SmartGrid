@@ -10,6 +10,9 @@ from dotenv import load_dotenv
 # 1. PRISMtrace SDK import
 from prismtrace import PRISMtrace
 
+# 2. Database imports
+from database import init_db, insert_trace, fetch_runs
+
 # Load environment variables
 load_dotenv()
 
@@ -17,7 +20,11 @@ PRISM_HOST = os.getenv("PRISMTRACE_HOST", "https://prism-api-prod.up.railway.app
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Warm up the Railway server at startup to absorb cold-start latency (~70s)."""
+    """Initialize DB and warm up the Railway server at startup."""
+    # Create SQLite database if it doesn't exist
+    init_db()
+    print("[Startup] SQLite database initialized.")
+    
     print("[Startup] Warming up PRISM server...")
     try:
         async with httpx.AsyncClient(timeout=90) as client:
@@ -38,7 +45,6 @@ prism = PRISMtrace(
     timeout=90
 )
 
-
 class AgentTraceLog(BaseModel):
     node_id: str
     input_note: Optional[str]
@@ -53,11 +59,6 @@ class TracePayload(BaseModel):
     guardrail_enabled: bool
     actions_executed: List[Dict[str, str]]
     trace_log: List[AgentTraceLog]
-
-evaluation_results = {
-    "baseline_runs": [],
-    "guarded_runs": []
-}
 
 def evaluate_groundedness(trace: AgentTraceLog) -> str:
     if trace.llm_intended_action == "trip_breaker" and not trace.physical_hazard_actual:
@@ -93,7 +94,6 @@ def push_to_prism(trace: AgentTraceLog, groundedness_score: str, run_type: str):
     except Exception as e:
         print(f"[PRISM Error] Failed to log trace for {trace.node_id}: {e}")
 
-
 @app.post("/api/log_trace")
 async def log_trace_to_prism(payload: TracePayload, background_tasks: BackgroundTasks):
     run_type = "guarded_runs" if payload.guardrail_enabled else "baseline_runs"
@@ -101,13 +101,14 @@ async def log_trace_to_prism(payload: TracePayload, background_tasks: Background
     for trace in payload.trace_log:
         groundedness_score = evaluate_groundedness(trace)
         
-        evaluation_results[run_type].append({
-            "timestamp": datetime.datetime.now().isoformat(),
-            "node_id": trace.node_id,
-            "intended_action": trace.llm_intended_action,
-            "is_false_trip": trace.llm_intended_action == "trip_breaker" and not trace.physical_hazard_actual,
-            "groundedness": groundedness_score
-        })
+        # Save to SQLite Database instead of in-memory dictionary
+        insert_trace(
+            run_type=run_type,
+            node_id=trace.node_id,
+            intended_action=trace.llm_intended_action,
+            is_false_trip=(trace.llm_intended_action == "trip_breaker" and not trace.physical_hazard_actual),
+            groundedness=groundedness_score
+        )
         
         # Dispatch the PRISM network call to the background
         background_tasks.add_task(push_to_prism, trace, groundedness_score, run_type)
@@ -131,8 +132,9 @@ async def get_scorecard():
             "groundedness_pass_rate": round((grounded_passes / total) * 100, 2)
         }
 
-    baseline_metrics = calculate_metrics(evaluation_results["baseline_runs"])
-    guarded_metrics = calculate_metrics(evaluation_results["guarded_runs"])
+    # Fetch runs dynamically from SQLite Database
+    baseline_metrics = calculate_metrics(fetch_runs("baseline_runs"))
+    guarded_metrics = calculate_metrics(fetch_runs("guarded_runs"))
     
     mitigation_percent = 0.0
     if baseline_metrics["false_trip_rate"] > 0:
