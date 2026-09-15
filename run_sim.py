@@ -2,7 +2,7 @@ from guardrail.sanitizer import process_tick
 from agent_v1 import evaluate_grid
 import json
 import time
-import requests  # <-- We need this to talk to the backend
+import requests
 from sim_engine import GridSimulationEngine
 
 def main():
@@ -32,21 +32,26 @@ def main():
                 overload_str = " [OVERLOAD CRITICAL!]" if sub["is_overloaded"] else ""
                 print(f"  {sub['node_id']}: {status_str} | {v_str} | {f_str} | {load_str}{overload_str}")
 
+            trace_logs = []
+            step_ai_logs = [] # NEW: This captures the text logs for the HTML UI
+
             if safe_payload["global_safe_to_process"]:
                 print("\n--- LLM Evaluating Grid State ---")
                 ai_actions = evaluate_grid(safe_payload)
                 
-                trace_logs = [] # Prepare data to send to the dashboard
-                
                 if not ai_actions:
-                    print("  [🤖 AI DECISION] No actions required. Grid operates within nominal limits.")
+                    msg = "  [🤖 AI DECISION] No actions required. Grid operates within nominal limits."
+                    print(msg)
+                    step_ai_logs.append(msg)
                 else:
                     for action in ai_actions:
                         action_type = action.get('action')
                         target = action.get('sector_id')
                         reason = action.get('reason')
                         
-                        print(f"  [🤖 AI DECISION] Action: {action_type} on {target} | Reason: {reason}")
+                        ai_msg = f"  [🤖 AI DECISION] Action: {action_type} on {target} | Reason: {reason}"
+                        print(ai_msg)
+                        step_ai_logs.append(ai_msg)
                         
                         node_data = next((sub for sub in safe_payload["substations"] if sub["node_id"] == target), None)
                         
@@ -63,26 +68,29 @@ def main():
                             # --- Python Safety Gate ---
                             if action_type == "OPEN":
                                 if current_status == "OPEN":
-                                    print(f"    -> [IGNORED] {target} is already OPEN.")
+                                    gate_msg = f"    -> [IGNORED] {target} is already OPEN."
                                     final_action = "IGNORED"
                                 elif not physical_hazard_actual:
-                                    print(f"    -> [BLOCKED] Guardrail caught math error! Voltage {actual_voltage}V and Load are safe.")
+                                    gate_msg = f"    -> [BLOCKED] Guardrail caught math error! Voltage {actual_voltage:.2f}V and Load are safe."
                                     final_action = "BLOCKED"
                                 else:
-                                    print(f"    -> [EXECUTING] Tripping {target} to protect the grid!")
+                                    gate_msg = f"    -> [EXECUTING] Tripping {target} to protect the grid!"
                                     engine.trip_breaker(target)
                                     final_action = "EXECUTED"
                                     
                             elif action_type == "CLOSE":
                                 if current_status == "CLOSED":
-                                    print(f"    -> [IGNORED] {target} is already CLOSED.")
+                                    gate_msg = f"    -> [IGNORED] {target} is already CLOSED."
                                     final_action = "IGNORED"
                                 else:
-                                    print(f"    -> [EXECUTING] Restoring power to {target}.")
+                                    gate_msg = f"    -> [EXECUTING] Restoring power to {target}."
                                     engine.reset_breaker(target)
                                     final_action = "EXECUTED"
+                            
+                            print(gate_msg)
+                            step_ai_logs.append(gate_msg)
                                     
-                            # Append exactly what happened to our log payload
+                            # Append exactly what happened to our log payload for PRISM
                             trace_logs.append({
                                 "node_id": target,
                                 "input_note": node_data.get("sanitized_note", "Routine check"),
@@ -93,19 +101,25 @@ def main():
                                 "physical_hazard_actual": physical_hazard_actual,
                                 "final_dispatched_action": final_action
                             })
-                
-                # --- SEND DATA TO BACKEND (This populates the DB and PRISM) ---
-                if trace_logs:
-                    try:
-                        payload = {
-                            "guardrail_enabled": True,
-                            "actions_executed": [],
-                            "trace_log": trace_logs
-                        }
-                        # HTTP POST to your FastAPI server
-                        requests.post("http://127.0.0.1:8000/api/log_trace", json=payload, timeout=2)
-                    except Exception as e:
-                        print(f"  [⚠️ WARNING] Could not reach FastAPI backend: {e}")
+            else:
+                msg = "\n--- [CRITICAL FAIL-SAFE] Guardrail blocked LLM execution. Multi-node anomaly detected. ---"
+                print(msg)
+                step_ai_logs.append(msg)
+            
+            # --- SEND DATA TO BACKEND (Populates DB, PRISM, and Frontend) ---
+            try:
+                payload = {
+                    "guardrail_enabled": True,
+                    "actions_executed": [],
+                    "trace_log": trace_logs,
+                    "global_safe": safe_payload["global_safe_to_process"],
+                    "substations": safe_payload["substations"],
+                    "step": step,                                # Pushes the live clock
+                    "latest_ai_actions": step_ai_logs            # Pushes the terminal text
+                }
+                requests.post("http://127.0.0.1:8000/api/log_trace", json=payload, timeout=2)
+            except Exception as e:
+                print(f"  [⚠️ WARNING] Could not reach FastAPI backend: {e}")
 
             time.sleep(1.0)
             print("-" * 60)
