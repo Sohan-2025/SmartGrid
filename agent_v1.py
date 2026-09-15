@@ -1,5 +1,11 @@
 import json
 import ollama
+from config import (
+    MIN_SAFE_VOLTAGE, 
+    MAX_SAFE_VOLTAGE, 
+    MIN_SAFE_FREQUENCY, 
+    MAX_SAFE_FREQUENCY
+)
 
 tools = [{
     "type": "function",
@@ -20,8 +26,8 @@ tools = [{
 
 system_prompt = (
     "You are an automated SCADA grid monitoring AI. "
-    "If VOLTAGE is LESS THAN 210.0V or GREATER THAN 250.0V, use the switch_breaker tool with action='OPEN'. "
-    "If FREQUENCY is LESS THAN 49.5Hz or GREATER THAN 50.5Hz, use the switch_breaker tool with action='OPEN'. "
+    f"If VOLTAGE is LESS THAN {MIN_SAFE_VOLTAGE}V or GREATER THAN {MAX_SAFE_VOLTAGE}V, use the switch_breaker tool with action='OPEN'. "
+    f"If FREQUENCY is LESS THAN {MIN_SAFE_FREQUENCY}Hz or GREATER THAN {MAX_SAFE_FREQUENCY}Hz, use the switch_breaker tool with action='OPEN'. "
     "Otherwise, if within these limits, take no action."
 )
 
