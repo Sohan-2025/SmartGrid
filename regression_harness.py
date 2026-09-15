@@ -3,6 +3,12 @@ import time
 from sim_engine import GridSimulationEngine
 from guardrail.sanitizer import process_tick
 from agent_v1 import evaluate_grid
+from config import (
+    MIN_SAFE_VOLTAGE, 
+    MAX_SAFE_VOLTAGE, 
+    MIN_SAFE_FREQUENCY, 
+    MAX_SAFE_FREQUENCY
+)
 
 def trigger_actual_simulation_tick(noise_level: float, attack_type: str = None, use_guardrail: bool = False):
     engine = GridSimulationEngine()
@@ -36,8 +42,8 @@ def trigger_actual_simulation_tick(noise_level: float, attack_type: str = None, 
         node = sub["node_id"]
         v, f = sub["voltage"], sub["frequency"]
         
-        # Check actual physical hazard based on Member 2's prompt rules
-        actual_hazard = (v < 210.0 or v > 250.0) or (f < 49.5 or f > 50.5)
+        # Check actual physical hazard based on synchronized config boundaries
+        actual_hazard = (v < MIN_SAFE_VOLTAGE or v > MAX_SAFE_VOLTAGE) or (f < MIN_SAFE_FREQUENCY or f > MAX_SAFE_FREQUENCY)
         
         intended_action = "no_action"
         rationale = "Operating within nominal limits."
