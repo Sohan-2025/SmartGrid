@@ -2,6 +2,7 @@ import time
 from sim_engine import GridSimulationEngine
 from guardrail.sanitizer import process_tick
 from agent_v1 import evaluate_grid
+from config import MIN_SAFE_VOLTAGE, MAX_SAFE_VOLTAGE
 
 
 def main():
@@ -69,8 +70,8 @@ def main():
                             if action_type == "OPEN":
                                 if current_status == "OPEN":
                                     print(f"    -> [IGNORED] {target} is already OPEN.")
-                                # Allow the trip if it's actually overloaded OR voltage is bad
-                                elif not is_overloaded and (218.5 <= actual_voltage <= 241.5):
+                                # Allow the trip if it's actually overloaded OR voltage is outside safe config bounds
+                                elif not is_overloaded and (MIN_SAFE_VOLTAGE <= actual_voltage <= MAX_SAFE_VOLTAGE):
                                     print(f"    -> [BLOCKED] Guardrail caught math error! Voltage {actual_voltage}V and Load are safe.")
                                 else:
                                     print(f"    -> [EXECUTING] Tripping {target} to protect the grid!")
