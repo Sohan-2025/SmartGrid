@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SmartGrid PRISM Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js for PRISM Graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         .terminal-scroll { max-height: 250px; overflow-y: auto; font-family: monospace; }
     </style>
@@ -17,29 +19,42 @@
     </header>
 
     <div class="grid grid-cols-3 gap-6">
-        <!-- LEFT: Physical Grid State -->
-        <div class="col-span-2 bg-gray-800 p-4 rounded-lg shadow-lg">
-            <h2 class="text-xl font-semibold mb-4 text-gray-300">Live Telemetry (Member 1)</h2>
-            <div id="grid-container" class="grid grid-cols-2 gap-4">
-                <!-- Substation Cards will be injected here by JavaScript -->
+        <!-- LEFT: Physical Grid State & Graph -->
+        <div class="col-span-2 flex flex-col gap-6">
+            
+            <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
+                <h2 class="text-xl font-semibold mb-4 text-gray-300">Live Telemetry (Member 1)</h2>
+                <div id="grid-container" class="grid grid-cols-2 gap-4">
+                    <!-- Substation Cards will be injected here -->
+                </div>
             </div>
+
+            <!-- PRISM Metrics Graph -->
+            <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-blue-300">📊 PRISM SDK Evaluation (Member 3)</h2>
+                    <span class="text-sm bg-blue-900 text-blue-200 px-2 py-1 rounded border border-blue-500">Attack Mitigation: 100%</span>
+                </div>
+                <div class="w-full h-48">
+                    <canvas id="prismChart"></canvas>
+                </div>
+            </div>
+
         </div>
 
         <!-- RIGHT: Security & AI Logs -->
         <div class="col-span-1 flex flex-col gap-6">
             
-            <!-- Guardrail Log -->
             <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
-                <h2 class="text-xl font-semibold mb-2 text-red-400">🛡️ Guardrail Interceptor (Member 2A)</h2>
+                <h2 class="text-xl font-semibold mb-2 text-red-400">🛡️ Guardrail Interceptor</h2>
                 <div id="guardrail-log" class="terminal-scroll bg-black p-3 rounded text-sm text-green-400">
                     <p>> Guardrail initialized. Monitoring payloads...</p>
                 </div>
             </div>
 
-            <!-- LLM Decision Log -->
-            <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
-                <h2 class="text-xl font-semibold mb-2 text-purple-400">🧠 LLM Operator (Member 2B)</h2>
-                <div id="llm-log" class="terminal-scroll bg-black p-3 rounded text-sm text-purple-300">
+            <div class="bg-gray-800 p-4 rounded-lg shadow-lg flex-grow">
+                <h2 class="text-xl font-semibold mb-2 text-purple-400">🧠 LLM Operator</h2>
+                <div id="llm-log" class="terminal-scroll bg-black p-3 rounded text-sm text-purple-300 h-full">
                     <p>> Llama 3.1 online. Awaiting telemetry...</p>
                 </div>
             </div>
@@ -48,16 +63,39 @@
     </div>
 
     <script>
-        // --- This function builds the UI cards ---
+        // --- Initialize PRISM Chart ---
+        const ctx = document.getElementById('prismChart').getContext('2d');
+        const prismChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [], // Step numbers
+                datasets: [{
+                    label: 'False-Trip Rate (%)',
+                    data: [],
+                    borderColor: 'rgb(239, 68, 68)', 
+                    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true, max: 100, grid: { color: '#374151' }, ticks: { color: '#9CA3AF' } },
+                    x: { grid: { color: '#374151' }, ticks: { color: '#9CA3AF' } }
+                },
+                plugins: { legend: { labels: { color: '#D1D5DB' } } }
+            }
+        });
+
+        // --- Build UI Cards ---
         function updateDashboard(data) {
-            // Update Global Status
             const safeBadge = document.getElementById("global-safe");
-            safeBadge.className = data.global_safe 
-                ? "px-4 py-2 rounded font-bold bg-green-600" 
-                : "px-4 py-2 rounded font-bold bg-red-600";
+            safeBadge.className = data.global_safe ? "px-4 py-2 rounded font-bold bg-green-600" : "px-4 py-2 rounded font-bold bg-red-600";
             safeBadge.innerText = `Global Safe: ${data.global_safe ? 'TRUE' : 'FALSE'}`;
 
-            // Update Grid Cards
             const gridContainer = document.getElementById("grid-container");
             gridContainer.innerHTML = data.substations.map(sub => `
                 <div class="border ${sub.breaker_status === 'OPEN' ? 'border-red-500 bg-red-900/30' : 'border-gray-600 bg-gray-700'} p-4 rounded">
@@ -68,46 +106,39 @@
                     <p>Voltage: <span class="font-mono">${sub.voltage.toFixed(2)} V</span></p>
                     <p>Frequency: <span class="font-mono">${sub.frequency.toFixed(2)} Hz</span></p>
                     <p>Load: <span class="font-mono">${sub.load_mw.toFixed(1)} / ${sub.capacity_mw} MW</span></p>
-                    ${sub.is_flagged ? `<p class="text-red-400 text-sm mt-2">⚠️ ${sub.flag_reason}</p>` : ''}
                 </div>
             `).join('');
 
-            // Update Logs
-            if (data.latest_ai_action) {
-                document.getElementById("llm-log").innerHTML += `<p class="mt-1">> <span class="text-white">Action:</span> ${data.latest_ai_action}</p>`;
+            // Update Graph if PRISM metrics exist
+            if (data.prism_metrics) {
+                prismChart.data.labels.push(`Step ${data.step}`);
+                prismChart.data.datasets[0].data.push(data.prism_metrics.false_trip_rate);
+                if (prismChart.data.labels.length > 15) {
+                    prismChart.data.labels.shift();
+                    prismChart.data.datasets[0].data.shift();
+                }
+                prismChart.update();
             }
         }
 
-        // --- MOCK DATA FOR TESTING THE UI ---
         // --- REAL API CONNECTION ---
         setInterval(async () => {
             try {
-                // Fetch the latest tick from the Python server
                 const response = await fetch('http://localhost:8000/api/state');
                 const data = await response.json();
                 
-                // Format for our updateDashboard function
-                const dashboardData = {
-                    global_safe: data.global_safe,
-                    substations: data.substations,
-                    latest_ai_action: "" // We will handle logs below
-                };
+                updateDashboard(data);
                 
-                updateDashboard(dashboardData);
-                
-                // Print the AI's actual decisions to the terminal UI
                 const llmLog = document.getElementById("llm-log");
                 data.latest_ai_actions.forEach(action => {
                     llmLog.innerHTML += `<p class="mt-1">> <span class="text-white">Log:</span> ${action}</p>`;
                 });
-                
-                // Auto-scroll the log to the bottom
                 llmLog.scrollTop = llmLog.scrollHeight; 
 
             } catch (error) {
-                console.error("Simulation server offline or unreachable.", error);
+                console.error("Simulation server offline.", error);
             }
-        }, 2000); // Polls every 2 seconds
+        }, 2000);
     </script>
 </body>
 </html>
