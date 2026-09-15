@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartGrid PRISM Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .terminal-scroll { max-height: 250px; overflow-y: auto; font-family: monospace; }
+    </style>
+</head>
+<body class="bg-gray-900 text-white p-6">
+    
+    <header class="mb-6 flex justify-between items-center border-b border-gray-700 pb-4">
+        <h1 class="text-3xl font-bold text-blue-400">⚡ SmartGrid Control Center</h1>
+        <div id="global-safe" class="px-4 py-2 rounded font-bold bg-green-600">Global Safe: TRUE</div>
+    </header>
+
+    <div class="grid grid-cols-3 gap-6">
+        <!-- LEFT: Physical Grid State -->
+        <div class="col-span-2 bg-gray-800 p-4 rounded-lg shadow-lg">
+            <h2 class="text-xl font-semibold mb-4 text-gray-300">Live Telemetry (Member 1)</h2>
+            <div id="grid-container" class="grid grid-cols-2 gap-4">
+                <!-- Substation Cards will be injected here by JavaScript -->
+            </div>
+        </div>
+
+        <!-- RIGHT: Security & AI Logs -->
+        <div class="col-span-1 flex flex-col gap-6">
+            
+            <!-- Guardrail Log -->
+            <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
+                <h2 class="text-xl font-semibold mb-2 text-red-400">🛡️ Guardrail Interceptor (Member 2A)</h2>
+                <div id="guardrail-log" class="terminal-scroll bg-black p-3 rounded text-sm text-green-400">
+                    <p>> Guardrail initialized. Monitoring payloads...</p>
+                </div>
+            </div>
+
+            <!-- LLM Decision Log -->
+            <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
+                <h2 class="text-xl font-semibold mb-2 text-purple-400">🧠 LLM Operator (Member 2B)</h2>
+                <div id="llm-log" class="terminal-scroll bg-black p-3 rounded text-sm text-purple-300">
+                    <p>> Llama 3.1 online. Awaiting telemetry...</p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- This function builds the UI cards ---
+        function updateDashboard(data) {
+            // Update Global Status
+            const safeBadge = document.getElementById("global-safe");
+            safeBadge.className = data.global_safe 
+                ? "px-4 py-2 rounded font-bold bg-green-600" 
+                : "px-4 py-2 rounded font-bold bg-red-600";
+            safeBadge.innerText = `Global Safe: ${data.global_safe ? 'TRUE' : 'FALSE'}`;
+
+            // Update Grid Cards
+            const gridContainer = document.getElementById("grid-container");
+            gridContainer.innerHTML = data.substations.map(sub => `
+                <div class="border ${sub.breaker_status === 'OPEN' ? 'border-red-500 bg-red-900/30' : 'border-gray-600 bg-gray-700'} p-4 rounded">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="font-bold text-lg">${sub.node_id}</h3>
+                        <span class="px-2 py-1 text-xs rounded font-bold ${sub.breaker_status === 'OPEN' ? 'bg-red-500' : 'bg-green-500'}">${sub.breaker_status}</span>
+                    </div>
+                    <p>Voltage: <span class="font-mono">${sub.voltage.toFixed(2)} V</span></p>
+                    <p>Frequency: <span class="font-mono">${sub.frequency.toFixed(2)} Hz</span></p>
+                    <p>Load: <span class="font-mono">${sub.load_mw.toFixed(1)} / ${sub.capacity_mw} MW</span></p>
+                    ${sub.is_flagged ? `<p class="text-red-400 text-sm mt-2">⚠️ ${sub.flag_reason}</p>` : ''}
+                </div>
+            `).join('');
+
+            // Update Logs
+            if (data.latest_ai_action) {
+                document.getElementById("llm-log").innerHTML += `<p class="mt-1">> <span class="text-white">Action:</span> ${data.latest_ai_action}</p>`;
+            }
+        }
+
+        // --- MOCK DATA FOR TESTING THE UI ---
+        // --- REAL API CONNECTION ---
+        setInterval(async () => {
+            try {
+                // Fetch the latest tick from the Python server
+                const response = await fetch('http://localhost:8000/api/state');
+                const data = await response.json();
+                
+                // Format for our updateDashboard function
+                const dashboardData = {
+                    global_safe: data.global_safe,
+                    substations: data.substations,
+                    latest_ai_action: "" // We will handle logs below
+                };
+                
+                updateDashboard(dashboardData);
+                
+                // Print the AI's actual decisions to the terminal UI
+                const llmLog = document.getElementById("llm-log");
+                data.latest_ai_actions.forEach(action => {
+                    llmLog.innerHTML += `<p class="mt-1">> <span class="text-white">Log:</span> ${action}</p>`;
+                });
+                
+                // Auto-scroll the log to the bottom
+                llmLog.scrollTop = llmLog.scrollHeight; 
+
+            } catch (error) {
+                console.error("Simulation server offline or unreachable.", error);
+            }
+        }, 2000); // Polls every 2 seconds
+    </script>
+</body>
+</html>
