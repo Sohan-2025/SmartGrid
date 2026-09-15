@@ -1,10 +1,12 @@
 import time
 from sim_engine import GridSimulationEngine
+from guardrail.sanitizer import process_tick
+from agent_v1 import evaluate_grid
 
 
 def main():
     engine = GridSimulationEngine()
-    print("=== Smart Grid Simulation: Live Cascading Demo ===")
+    print("=== Smart Grid Simulation: Live Cascading + LLM Defense Agent ===")
     print("Press Ctrl+C to stop.\n")
 
     # Lower capacity of Substation_A so B's failure will trigger an overload
@@ -26,21 +28,32 @@ def main():
                 tripped = engine.trigger_cascade()
                 print(f"[CASCADE ALERT] Tripped nodes due to overload: {tripped}\n")
 
-            payload = engine.tick(noise_level=0.01)
+            # 1. Generate Physical Telemetry Tick
+            raw_payload = engine.tick(noise_level=0.01)
 
-            print(f"--- Step {step} | Timestamp: {payload['timestamp']:.2f} ---")
-            for sub in payload["substations"]:
+            # 2. Sanitize Payload via Guardrail
+            safe_payload = process_tick(raw_payload)
+
+            print(f"\n--- Step {step} | Timestamp: {raw_payload['timestamp']:.2f} ---")
+            for sub in raw_payload["substations"]:
                 status_str = f"Status: {sub['breaker_status']:<6}"
                 load_str = f"Load: {sub['load_mw']:>5.1f}/{sub['capacity_mw']} MW"
                 v_str = f"V: {sub['voltage']:>6.2f} V"
                 f_str = f"F: {sub['frequency']:>5.2f} Hz"
                 overload_str = " [OVERLOAD CRITICAL!]" if sub["is_overloaded"] else ""
 
-                print(
-                    f"  {sub['node_id']}: {status_str} | {v_str} | {f_str} | {load_str}{overload_str}"
-                )
+                print(f"  {sub['node_id']}: {status_str} | {v_str} | {f_str} | {load_str}{overload_str}")
 
-            time.sleep(1.0)
+            # 3. Invoke LLM Evaluation
+            print("\n--- LLM Evaluating Grid State ---")
+            try:
+                ai_actions = evaluate_grid(safe_payload)
+                print(f"[LLM DECISION]: {ai_actions}")
+            except Exception as e:
+                print(f"[LLM OFFLINE/ERROR]: Could not reach Ollama: {e}")
+
+            time.sleep(2.0)
+
     except KeyboardInterrupt:
         print("\nSimulation stopped.")
 
