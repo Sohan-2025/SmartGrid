@@ -22,11 +22,15 @@ app.add_middleware(
 engine = GridSimulationEngine()
 print("=== Smart Grid API Server: Live Cascading + LLM Defense Agent ===")
 engine.topology.graph.nodes["Substation_A"]["capacity_mw"] = 65.0
+
+# --- GLOBAL TRACKERS (Ensures it runs indefinitely and tracks stats) ---
 step = 0
+total_ai_commands = 0
+hallucinations_caught = 0
 
 @app.get("/api/state")
 def get_grid_state():
-    global step
+    global step, total_ai_commands, hallucinations_caught
     step += 1
     
     # We will collect all terminal prints into this list to send to the UI
@@ -57,6 +61,8 @@ def get_grid_state():
             formatted_actions.append("[🤖 AI DECISION] No actions required. Grid operates within nominal limits.")
         else:
             for action in ai_actions:
+                total_ai_commands += 1  # Record that the AI made a decision
+                
                 action_type = action.get('action')
                 target = action.get('sector_id')
                 reason = action.get('reason')
@@ -76,6 +82,7 @@ def get_grid_state():
                             formatted_actions.append(f"    -> [IGNORED] {target} is already OPEN.")
                         # Allow the trip if it's actually overloaded OR voltage is outside safe config bounds
                         elif not is_overloaded and (MIN_SAFE_VOLTAGE <= actual_voltage <= MAX_SAFE_VOLTAGE):
+                            hallucinations_caught += 1  # The guardrail intercepted a bad command!
                             formatted_actions.append(f"    -> [BLOCKED] Guardrail caught math error! Voltage {actual_voltage:.2f}V and Load are safe.")
                         else:
                             formatted_actions.append(f"    -> [EXECUTING] Tripping {target} to protect the grid!")
@@ -94,18 +101,25 @@ def get_grid_state():
     # Combine the cascade events and the LLM logs to send to the frontend
     all_logs = system_logs + formatted_actions
 
-    # 4. Return data as JSON for the dashboard (INCLUDING PRISM METRICS)
+    # --- CALCULATE DYNAMIC GRAPH DATA ---
+    ai_error_rate = 0.0
+    if total_ai_commands > 0:
+        ai_error_rate = (hallucinations_caught / total_ai_commands) * 100.0
+
+    # 4. Return data as JSON for the dashboard
     return {
         "step": step,
         "global_safe": safe_payload.get("global_safe_to_process", True),
         "substations": safe_payload["substations"],
         "latest_ai_actions": all_logs,
         "prism_metrics": {
-            "false_trip_rate": 0.0,
+            "ai_hallucination_rate": ai_error_rate,
+            "system_false_trip_rate": 0.0,
             "mitigation_rate": 100.0
         }
     }
 
 if __name__ == "__main__":
     print("Dashboard can now connect to http://localhost:8000/api/state")
+    # This keeps the server running infinitely until you press Ctrl+C
     uvicorn.run(app, host="0.0.0.0", port=8000)
